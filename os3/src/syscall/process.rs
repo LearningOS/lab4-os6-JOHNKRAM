@@ -1,8 +1,8 @@
 //! Process management syscalls
 
 //use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
-use crate::task::{exit_current_and_run_next, suspend_current_and_run_next, get_current_task_info};
 pub use crate::task::TaskInfo;
+use crate::task::{exit_current_and_run_next, get_current_task_info, suspend_current_and_run_next};
 use crate::timer::get_time_us;
 
 #[repr(C)]
@@ -11,7 +11,6 @@ pub struct TimeVal {
     pub sec: usize,
     pub usec: usize,
 }
-
 
 /// task exits and submit an exit code
 pub fn sys_exit(exit_code: i32) -> ! {
@@ -40,8 +39,6 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
-    unsafe {
-        *ti = get_current_task_info()
-    }
+    unsafe { *ti = get_current_task_info() }
     0
 }

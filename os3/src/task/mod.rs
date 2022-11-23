@@ -24,7 +24,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use lazy_static::*;
 pub use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus, TaskInfo};
+pub use task::{TaskControlBlock, TaskInfo, TaskStatus};
 
 pub use context::TaskContext;
 
@@ -169,7 +169,6 @@ impl TaskManager {
             time: (get_time_us() - task.start_time) / 1000,
         }
     }
-
 }
 
 /// Run the first task in task list.
