@@ -1,7 +1,6 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
-use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
-use _core::mem::size_of;
+use super::{frame_alloc, FrameTracker, PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -114,13 +113,11 @@ impl PageTable {
         }
         result
     }
-    #[allow(unused)]
     pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
         let pte = self.find_pte_create(vpn).unwrap();
         assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V);
     }
-    #[allow(unused)]
     pub fn unmap(&mut self, vpn: VirtPageNum) {
         let pte = self.find_pte_create(vpn).unwrap();
         assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
@@ -157,8 +154,11 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     v
 }
 
-pub fn virtual_pointer_to_physical_pointer<T>(token: usize, ptr: *mut T) -> *mut T {
-    let mut buffers = translated_byte_buffer(token, ptr as *const u8, size_of::<T>());
-    assert_eq!(buffers.len(), 1);
-    buffers[0].as_mut_ptr() as *mut T
+pub fn translate_pointer<T>(token: usize, vp: *mut T) -> *mut T {
+    let va = VirtAddr::from(vp as usize);
+    let vpn = va.floor();
+    let pagetable = PageTable::from_token(token);
+    let ppn = pagetable.translate(vpn).unwrap().ppn();
+    let pa = PhysAddr::from(ppn);
+    (usize::from(pa) + va.page_offset()) as *mut T
 }

@@ -217,6 +217,41 @@ impl MemorySet {
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.page_table.translate(vpn)
     }
+    pub fn map(&mut self, start_va: VirtAddr, end_va: VirtAddr, port: u8) -> isize {
+        let area = MapArea::new(
+            start_va,
+            end_va,
+            MapType::Framed,
+            MapPermission::from_bits(port << 1).unwrap() | MapPermission::U,
+        );
+        for vpn in area.vpn_range {
+            if let Some(pte) = self.translate(vpn) {
+                if pte.is_valid() {
+                    return -1;
+                }
+            }
+        }
+        self.push(area, None);
+        0
+    }
+    pub fn unmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let vpn_range = VPNRange::new(start_va.floor(), end_va.ceil());
+        for vpn in vpn_range {
+            if let Some(pte) = self.translate(vpn) {
+                if !pte.is_valid() {
+                    return -1;
+                }
+            } else {
+                return -1;
+            }
+        }
+        self.areas
+            .iter_mut()
+            .find(|area| area.vpn_range == vpn_range)
+            .unwrap()
+            .unmap(&mut self.page_table);
+        0
+    }
 }
 
 /// map area structure, controls a contiguous piece of virtual memory
@@ -258,7 +293,6 @@ impl MapArea {
         let pte_flags = PTEFlags::from_bits(self.map_perm.bits).unwrap();
         page_table.map(vpn, ppn, pte_flags);
     }
-    #[allow(unused)]
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         #[allow(clippy::single_match)]
         match self.map_type {
@@ -274,7 +308,6 @@ impl MapArea {
             self.map_one(page_table, vpn);
         }
     }
-    #[allow(unused)]
     pub fn unmap(&mut self, page_table: &mut PageTable) {
         for vpn in self.vpn_range {
             self.unmap_one(page_table, vpn);

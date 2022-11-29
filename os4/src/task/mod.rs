@@ -17,6 +17,7 @@ mod task;
 use core::convert::TryInto;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::VirtAddr;
 use crate::sync::UPSafeCell;
 use crate::timer::get_time_us;
 use crate::trap::TrapContext;
@@ -114,7 +115,7 @@ impl TaskManager {
     ///
     /// In this case, we only return the first `Ready` task in task list.
     fn find_next_task(&self) -> Option<usize> {
-        let inner = self.inner.exclusive_access();
+        let inner = self.inner.inclusive_access();
         let current = inner.current_task;
         (current + 1..current + self.num_app + 1)
             .map(|id| id % self.num_app)
@@ -130,7 +131,7 @@ impl TaskManager {
     #[allow(clippy::mut_from_ref)]
     /// Get the current 'Running' task's trap contexts.
     fn get_current_trap_cx(&self) -> &mut TrapContext {
-        let inner = self.inner.exclusive_access();
+        let inner = self.inner.inclusive_access();
         inner.tasks[inner.current_task].get_trap_cx()
     }
 
@@ -174,6 +175,18 @@ impl TaskManager {
             syscall_times: task.syscall_times.as_slice().try_into().unwrap(),
             time: (get_time_us() - task.start_time) / 1000,
         }
+    }
+
+    fn mmap(&self, start_va: VirtAddr, end_va: VirtAddr, port: u8) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let task_id = inner.current_task;
+        inner.tasks[task_id].memory_set.map(start_va, end_va, port)
+    }
+
+    fn munmap(&self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let task_id = inner.current_task;
+        inner.tasks[task_id].memory_set.unmap(start_va, end_va)
     }
 }
 
@@ -226,4 +239,12 @@ pub fn inc_task_syscall_times(syscall_id: usize) {
 
 pub fn get_current_task_info() -> TaskInfo {
     TASK_MANAGER.get_current_task_info()
+}
+
+pub fn mmap(start_va: VirtAddr, end_va: VirtAddr, port: u8) -> isize {
+    TASK_MANAGER.mmap(start_va, end_va, port)
+}
+
+pub fn munmap(start_va: VirtAddr, end_va: VirtAddr) -> isize {
+    TASK_MANAGER.munmap(start_va, end_va)
 }

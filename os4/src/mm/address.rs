@@ -175,7 +175,7 @@ impl StepByOne for VirtPageNum {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 /// a simple range structure for type T
 pub struct SimpleRange<T>
 where
@@ -243,7 +243,3 @@ where
 
 /// a simple range structure for virtual page number
 pub type VPNRange = SimpleRange<VirtPageNum>;
-
-pub fn len_ceil(len: usize) -> usize {
-    len + PAGE_SIZE - 1 & !PAGE_SIZE
-}
