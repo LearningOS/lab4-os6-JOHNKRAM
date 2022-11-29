@@ -1,8 +1,5 @@
-<<<<<<< HEAD
 //! Building applications linker
 
-=======
->>>>>>> 453abdd (Initial commit)
 use std::fs::{read_dir, File};
 use std::io::{Result, Write};
 
@@ -14,10 +11,7 @@ fn main() {
 
 static TARGET_PATH: &str = "../user/build/bin/";
 
-<<<<<<< HEAD
 /// get app data and build linker
-=======
->>>>>>> 453abdd (Initial commit)
 fn insert_app_data() -> Result<()> {
     let mut f = File::create("src/link_app.S").unwrap();
     let mut apps: Vec<_> = read_dir("../user/build/bin/")
