@@ -5,7 +5,7 @@ use crate::mm::{translated_refmut, translated_str, VirtAddr};
 pub use crate::task::TaskInfo;
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next, get_current_task_info,
-    mmap, munmap, suspend_current_and_run_next, set_current_task_prio,
+    mmap, munmap, set_current_task_prio, suspend_current_and_run_next,
 };
 use crate::timer::get_time_us;
 use alloc::sync::Arc;

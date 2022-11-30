@@ -15,13 +15,14 @@ struct HeapElement(Arc<TaskControlBlock>);
 
 impl Ord for HeapElement {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.inner_inclusive_access().pass.cmp(&other.0.inner_inclusive_access().pass)
+        self.0
+            .inner_inclusive_access()
+            .pass
+            .cmp(&other.0.inner_inclusive_access().pass)
     }
 }
 
-impl Eq for HeapElement {
-
-}
+impl Eq for HeapElement {}
 
 impl PartialOrd for HeapElement {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -31,7 +32,10 @@ impl PartialOrd for HeapElement {
 
 impl PartialEq for HeapElement {
     fn eq(&self, other: &Self) -> bool {
-        self.0.inner_inclusive_access().pass.eq(&other.0.inner_inclusive_access().pass)
+        self.0
+            .inner_inclusive_access()
+            .pass
+            .eq(&other.0.inner_inclusive_access().pass)
     }
 }
 

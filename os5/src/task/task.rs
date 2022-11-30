@@ -256,9 +256,7 @@ impl Ord for Pass {
         }
     }
 }
-impl Eq for Pass {
-    
-}
+impl Eq for Pass {}
 
 impl PartialOrd for Pass {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
