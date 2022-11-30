@@ -5,7 +5,7 @@ use crate::mm::{translated_refmut, translated_str, VirtAddr};
 pub use crate::task::TaskInfo;
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next, get_current_task_info,
-    mmap, munmap, suspend_current_and_run_next,
+    mmap, munmap, suspend_current_and_run_next, set_current_task_prio,
 };
 use crate::timer::get_time_us;
 use alloc::sync::Arc;
@@ -124,7 +124,11 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
 
 // YOUR JOB: 实现sys_set_priority，为任务添加优先级
 pub fn sys_set_priority(_prio: isize) -> isize {
-    -1
+    if _prio <= 1 {
+        return -1;
+    }
+    set_current_task_prio(_prio as u64);
+    _prio
 }
 
 // YOUR JOB: 扩展内核以实现 sys_mmap 和 sys_munmap
@@ -160,11 +164,6 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         let task = current_task().unwrap();
         let new_task = task.spawn(data);
         let new_pid = new_task.pid.0;
-        // modify trap context of new_task, because it returns immediately after switching
-        let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
-        // we do not have to move to next instruction since we have done it before
-        // for child process, spawn returns 0
-        trap_cx.x[10] = 0;
         // add new task to scheduler
         add_task(new_task);
         new_pid as isize

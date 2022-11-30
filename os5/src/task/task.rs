@@ -9,6 +9,7 @@ use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::{vec, vec::Vec};
 use core::cell::{Ref, RefMut};
+use core::cmp::Ordering;
 
 /// Task control block structure
 ///
@@ -49,6 +50,8 @@ pub struct TaskControlBlockInner {
     pub syscall_times: Vec<u32>,
     pub start_time: usize,
     pub started: bool,
+    pub pass: Pass,
+    pub prio: u64,
 }
 
 /// Simple access to its internal fields
@@ -113,6 +116,8 @@ impl TaskControlBlock {
                     syscall_times: vec![0; MAX_SYSCALL_NUM],
                     start_time: 0,
                     started: false,
+                    pass: Pass(0),
+                    prio: 16,
                 })
             },
         };
@@ -183,6 +188,8 @@ impl TaskControlBlock {
                     syscall_times: vec![0; MAX_SYSCALL_NUM],
                     start_time: 0,
                     started: false,
+                    pass: Pass(0),
+                    prio: 16,
                 })
             },
         });
@@ -198,53 +205,14 @@ impl TaskControlBlock {
         // **** release children PCB automatically
     }
     pub fn spawn(self: &Arc<TaskControlBlock>, elf_data: &[u8]) -> Arc<TaskControlBlock> {
+        let task_control_block = Arc::new(TaskControlBlock::new(elf_data));
+        task_control_block.inner_exclusive_access().parent = Some(Arc::downgrade(self));
         // ---- access parent PCB exclusively
         let mut parent_inner = self.inner_exclusive_access();
-        // copy user space(include trap context)
-        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
-        let trap_cx_ppn = memory_set
-            .translate(VirtAddr::from(TRAP_CONTEXT).into())
-            .unwrap()
-            .ppn();
-        // alloc a pid and a kernel stack in kernel space
-        let pid_handle = pid_alloc();
-        let kernel_stack = KernelStack::new(&pid_handle);
-        let kernel_stack_top = kernel_stack.get_top();
-        let task_control_block = Arc::new(TaskControlBlock {
-            pid: pid_handle,
-            kernel_stack,
-            inner: unsafe {
-                UPSafeCell::new(TaskControlBlockInner {
-                    trap_cx_ppn,
-                    base_size: user_sp,
-                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
-                    task_status: TaskStatus::Ready,
-                    memory_set,
-                    parent: Some(Arc::downgrade(self)),
-                    children: Vec::new(),
-                    exit_code: 0,
-                    syscall_times: vec![0; MAX_SYSCALL_NUM],
-                    start_time: 0,
-                    started: false,
-                })
-            },
-        });
         // add child
         parent_inner.children.push(task_control_block.clone());
-        // modify kernel_sp in trap_cx
-        // **** access children PCB exclusively
-        let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
-        *trap_cx = TrapContext::app_init_context(
-            entry_point,
-            user_sp,
-            KERNEL_SPACE.exclusive_access().token(),
-            kernel_stack_top,
-            trap_handler as usize,
-        );
         // return
         task_control_block
-        // ---- release parent PCB automatically
-        // **** release children PCB automatically
     }
     pub fn getpid(&self) -> usize {
         self.pid.0
@@ -263,4 +231,43 @@ pub struct TaskInfo {
     pub status: TaskStatus,
     pub syscall_times: [u32; MAX_SYSCALL_NUM],
     pub time: usize,
+}
+
+const BIG_STRIDE: u64 = u64::MAX;
+const STRIDE_LESS: u64 = BIG_STRIDE >> 1;
+
+pub struct Pass(u64);
+
+impl Pass {
+    pub fn stride(&mut self, prio: u64) {
+        self.0 += BIG_STRIDE / prio;
+    }
+}
+
+impl Ord for Pass {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let diff = self.0 - other.0;
+        if diff == 0 {
+            Ordering::Equal
+        } else if diff <= STRIDE_LESS {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    }
+}
+impl Eq for Pass {
+    
+}
+
+impl PartialOrd for Pass {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Pass {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }

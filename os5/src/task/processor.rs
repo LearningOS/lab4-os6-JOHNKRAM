@@ -64,6 +64,8 @@ pub fn run_tasks() {
                 task_inner.start_time = get_time_us();
                 task_inner.started = true;
             }
+            let prio = task_inner.prio;
+            task_inner.pass.stride(prio);
             drop(task_inner);
             // release coming task TCB manually
             processor.current = Some(task);
@@ -139,6 +141,10 @@ pub fn munmap(start_va: VirtAddr, end_va: VirtAddr) -> isize {
         .inner_exclusive_access()
         .memory_set
         .unmap(start_va, end_va)
+}
+
+pub fn set_current_task_prio(prio: u64) {
+    current_task().unwrap().inner_exclusive_access().prio = prio;
 }
 
 /// Return to idle control flow for new scheduling
