@@ -51,8 +51,23 @@ impl EasyFileSystem {
             inode_area_start_block: 1 + inode_bitmap_blocks,
             data_area_start_block: 1 + inode_total_blocks + data_bitmap_blocks,
         };
-        // clear all blocks
-        for i in 0..total_blocks {
+        // clear inode bitmap
+        let start = 1;
+        let end = start + inode_bitmap_blocks;
+        for i in start..end {
+            get_block_cache(
+                i as usize,
+                Arc::clone(&block_device)
+            )
+            .lock()
+            .modify(0, |data_block: &mut DataBlock| {
+                for byte in data_block.iter_mut() { *byte = 0; }
+            });
+        }
+        // clear data bitmap
+        let start = 1 + inode_bitmap_blocks + inode_area_blocks;
+        let end = start + data_bitmap_blocks;
+        for i in start..end {
             get_block_cache(
                 i as usize,
                 Arc::clone(&block_device)

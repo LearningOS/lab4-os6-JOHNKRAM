@@ -1,7 +1,5 @@
 //! Types related to task management
 
-use core::iter::Once;
-
 use alloc::vec::Vec;
 
 use crate::config::MAX_SYSCALL_NUM;
