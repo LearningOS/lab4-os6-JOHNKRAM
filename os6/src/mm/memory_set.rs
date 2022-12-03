@@ -4,7 +4,7 @@ use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
-use crate::config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE, MMIO};
+use crate::config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE};
 use crate::sync::UPSafeCell;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
@@ -162,7 +162,8 @@ impl MemorySet {
                     MapType::Identical,
                     MapPermission::R | MapPermission::W,
                 ),
-            None);
+                None,
+            );
         }
         memory_set
     }
@@ -267,6 +268,41 @@ impl MemorySet {
     pub fn recycle_data_pages(&mut self) {
         //*self = Self::new_bare();
         self.areas.clear();
+    }
+    pub fn map(&mut self, start_va: VirtAddr, end_va: VirtAddr, port: u8) -> isize {
+        let area = MapArea::new(
+            start_va,
+            end_va,
+            MapType::Framed,
+            MapPermission::from_bits(port << 1).unwrap() | MapPermission::U,
+        );
+        for vpn in area.vpn_range {
+            if let Some(pte) = self.translate(vpn) {
+                if pte.is_valid() {
+                    return -1;
+                }
+            }
+        }
+        self.push(area, None);
+        0
+    }
+    pub fn unmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let vpn_range = VPNRange::new(start_va.floor(), end_va.ceil());
+        for vpn in vpn_range {
+            if let Some(pte) = self.translate(vpn) {
+                if !pte.is_valid() {
+                    return -1;
+                }
+            } else {
+                return -1;
+            }
+        }
+        self.areas
+            .iter_mut()
+            .find(|area| area.vpn_range == vpn_range)
+            .unwrap()
+            .unmap(&mut self.page_table);
+        0
     }
 }
 

@@ -4,11 +4,14 @@
 //! the current running state of CPU is recorded,
 //! and the replacement and transfer of control flow of different applications are executed.
 
+use core::convert::TryInto;
 
-use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
+use super::{TaskInfo, __switch};
+use crate::mm::VirtAddr;
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_us;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -57,6 +60,8 @@ pub fn run_tasks() {
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
+            let prio = task_inner.prio;
+            task_inner.pass.stride(prio);
             drop(task_inner);
             // release coming task TCB manually
             processor.current = Some(task);
@@ -92,6 +97,50 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .unwrap()
         .inner_exclusive_access()
         .get_trap_cx()
+}
+
+pub fn inc_task_syscall_times(syscall_id: usize) {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .syscall_times[syscall_id] += 1;
+}
+
+pub fn get_current_task_info() -> TaskInfo {
+    let task = current_task().unwrap();
+    let status = task.inner_inclusive_access().task_status;
+    let syscall_times = task
+        .inner_inclusive_access()
+        .syscall_times
+        .as_slice()
+        .try_into()
+        .unwrap();
+    let time = (get_time_us() - task.inner_inclusive_access().start_time) / 1000;
+    TaskInfo {
+        status,
+        syscall_times,
+        time,
+    }
+}
+
+pub fn mmap(start_va: VirtAddr, end_va: VirtAddr, port: u8) -> isize {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .memory_set
+        .map(start_va, end_va, port)
+}
+
+pub fn munmap(start_va: VirtAddr, end_va: VirtAddr) -> isize {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .memory_set
+        .unmap(start_va, end_va)
+}
+
+pub fn set_current_task_prio(prio: u64) {
+    current_task().unwrap().inner_exclusive_access().prio = prio;
 }
 
 /// Return to idle control flow for new scheduling

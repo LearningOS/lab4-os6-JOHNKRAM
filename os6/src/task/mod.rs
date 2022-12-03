@@ -17,23 +17,20 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::fs::{open_file, OpenFlags};
 use alloc::sync::Arc;
 use lazy_static::*;
 use manager::fetch_task;
 use switch::__switch;
-use crate::mm::VirtAddr;
-use crate::mm::MapPermission;
-use crate::config::PAGE_SIZE;
-use crate::timer::get_time_us;
-pub use crate::syscall::process::TaskInfo;
-use crate::fs::{open_file, OpenFlags};
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskInfo, TaskStatus};
 
 pub use context::TaskContext;
 pub use manager::add_task;
 pub use pid::{pid_alloc, KernelStack, PidHandle};
 pub use processor::{
-    current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
+    current_task, current_trap_cx, current_user_token, get_current_task_info,
+    inc_task_syscall_times, mmap, munmap, run_tasks, schedule, set_current_task_prio,
+    take_current_task,
 };
 
 /// Make current task suspended and switch to the next task
@@ -68,12 +65,14 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     // do not move to its parent but under initproc
 
     // ++++++ access initproc TCB exclusively
-    {
+    if task.getpid() != INITPROC.getpid() {
         let mut initproc_inner = INITPROC.inner_exclusive_access();
         for child in inner.children.iter() {
             child.inner_exclusive_access().parent = Some(Arc::downgrade(&INITPROC));
             initproc_inner.children.push(child.clone());
         }
+    } else {
+        panic!("Main process finished!");
     }
     // ++++++ release parent PCB
 

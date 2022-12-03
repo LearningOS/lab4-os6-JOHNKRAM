@@ -2,16 +2,15 @@
 
 use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT;
+use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT};
+use crate::fs::{File, Stdin, Stdout};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
-use alloc::vec::Vec;
-use core::cell::RefMut;
-use crate::fs::{File, Stdin, Stdout};
-use alloc::string::String;
-use crate::mm::translated_refmut;
+use alloc::{vec, vec::Vec};
+use core::cell::{Ref, RefMut};
+use core::cmp::Ordering;
 
 /// Task control block structure
 ///
@@ -50,6 +49,11 @@ pub struct TaskControlBlockInner {
     /// It is set when active exit or execution error occurs
     pub exit_code: i32,
     pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
+    pub syscall_times: Vec<u32>,
+    pub start_time: usize,
+    pub started: bool,
+    pub pass: Pass,
+    pub prio: u64,
 }
 
 /// Simple access to its internal fields
@@ -72,8 +76,7 @@ impl TaskControlBlockInner {
         self.get_status() == TaskStatus::Zombie
     }
     pub fn alloc_fd(&mut self) -> usize {
-        if let Some(fd) = (0..self.fd_table.len())
-            .find(|fd| self.fd_table[*fd].is_none()) {
+        if let Some(fd) = (0..self.fd_table.len()).find(|fd| self.fd_table[*fd].is_none()) {
             fd
         } else {
             self.fd_table.push(None);
@@ -86,6 +89,10 @@ impl TaskControlBlock {
     /// Get the mutex to get the RefMut TaskControlBlockInner
     pub fn inner_exclusive_access(&self) -> RefMut<'_, TaskControlBlockInner> {
         self.inner.exclusive_access()
+    }
+
+    pub fn inner_inclusive_access(&self) -> Ref<'_, TaskControlBlockInner> {
+        self.inner.inclusive_access()
     }
 
     /// Create a new process
@@ -124,6 +131,11 @@ impl TaskControlBlock {
                         // 2 -> stderr
                         Some(Arc::new(Stdout)),
                     ],
+                    syscall_times: vec![0; MAX_SYSCALL_NUM],
+                    start_time: 0,
+                    started: false,
+                    pass: Pass(0),
+                    prio: 16,
                 })
             },
         };
@@ -141,7 +153,7 @@ impl TaskControlBlock {
     /// Load a new elf to replace the original application address space and start execution
     pub fn exec(&self, elf_data: &[u8]) {
         // memory_set with elf program headers/trampoline/trap context/user stack
-        let (memory_set, mut user_sp, entry_point) = MemorySet::from_elf(elf_data);
+        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
         let trap_cx_ppn = memory_set
             .translate(VirtAddr::from(TRAP_CONTEXT).into())
             .unwrap()
@@ -200,6 +212,11 @@ impl TaskControlBlock {
                     children: Vec::new(),
                     exit_code: 0,
                     fd_table: new_fd_table,
+                    syscall_times: vec![0; MAX_SYSCALL_NUM],
+                    start_time: 0,
+                    started: false,
+                    pass: Pass(0),
+                    prio: 16,
                 })
             },
         });
@@ -214,6 +231,16 @@ impl TaskControlBlock {
         // ---- release parent PCB automatically
         // **** release children PCB automatically
     }
+    pub fn spawn(self: &Arc<TaskControlBlock>, elf_data: &[u8]) -> Arc<TaskControlBlock> {
+        let task_control_block = Arc::new(TaskControlBlock::new(elf_data));
+        task_control_block.inner_exclusive_access().parent = Some(Arc::downgrade(self));
+        // ---- access parent PCB exclusively
+        let mut parent_inner = self.inner_exclusive_access();
+        // add child
+        parent_inner.children.push(task_control_block.clone());
+        // return
+        task_control_block
+    }
     pub fn getpid(&self) -> usize {
         self.pid.0
     }
@@ -222,8 +249,50 @@ impl TaskControlBlock {
 #[derive(Copy, Clone, PartialEq)]
 /// task status: UnInit, Ready, Running, Exited
 pub enum TaskStatus {
-    UnInit,
-    Ready,
+    Ready = 1,
     Running,
     Zombie,
+}
+
+pub struct TaskInfo {
+    pub status: TaskStatus,
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    pub time: usize,
+}
+
+const BIG_STRIDE: u64 = u64::MAX;
+const STRIDE_LESS: u64 = BIG_STRIDE >> 1;
+
+pub struct Pass(u64);
+
+impl Pass {
+    pub fn stride(&mut self, prio: u64) {
+        self.0 += BIG_STRIDE / prio;
+    }
+}
+
+impl Ord for Pass {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let diff = self.0 - other.0;
+        if diff == 0 {
+            Ordering::Equal
+        } else if diff <= STRIDE_LESS {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    }
+}
+impl Eq for Pass {}
+
+impl PartialOrd for Pass {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Pass {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }
