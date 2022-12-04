@@ -99,7 +99,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 }
 
 // YOUR JOB: 引入虚地址后重写 sys_get_time
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     let us = get_time_us();
     // unsafe {
     //     *ts = TimeVal {
@@ -107,7 +107,7 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     //         usec: us % 1_000_000,
     //     };
     // }
-    let ts = translated_refmut(current_user_token(), _ts);
+    let ts = translated_refmut(current_user_token(), ts);
     *ts = TimeVal {
         sec: us / 1_000_000,
         usec: us % 1_000_000,
@@ -123,43 +123,43 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
 }
 
 // YOUR JOB: 实现sys_set_priority，为任务添加优先级
-pub fn sys_set_priority(_prio: isize) -> isize {
-    if _prio <= 1 {
+pub fn sys_set_priority(prio: isize) -> isize {
+    if prio <= 1 {
         return -1;
     }
-    set_current_task_prio(_prio as u64);
-    _prio
+    set_current_task_prio(prio as u64);
+    prio
 }
 
 // YOUR JOB: 扩展内核以实现 sys_mmap 和 sys_munmap
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    let start_va = VirtAddr::from(_start);
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
+    let start_va = VirtAddr::from(start);
     if start_va.page_offset() != 0 {
         return -1;
     }
-    let port = _port & 7;
-    if port == 0 || port != _port {
+    let p = port & 7;
+    if p == 0 || p != port {
         return -1;
     }
-    let end_va = VirtAddr::from(_start + _len);
-    mmap(start_va, end_va, port as u8)
+    let end_va = VirtAddr::from(start + len);
+    mmap(start_va, end_va, p as u8)
 }
 
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    let start_va = VirtAddr::from(_start);
+pub fn sys_munmap(start: usize, len: usize) -> isize {
+    let start_va = VirtAddr::from(start);
     if start_va.page_offset() != 0 {
         return -1;
     }
-    let end_va = VirtAddr::from(_start + _len);
+    let end_va = VirtAddr::from(start + len);
     munmap(start_va, end_va)
 }
 
 //
 // YOUR JOB: 实现 sys_spawn 系统调用
 // ALERT: 注意在实现 SPAWN 时不需要复制父进程地址空间，SPAWN != FORK + EXEC
-pub fn sys_spawn(_path: *const u8) -> isize {
+pub fn sys_spawn(path: *const u8) -> isize {
     let token = current_user_token();
-    let path = translated_str(token, _path);
+    let path = translated_str(token, path);
     if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
         let all_data = app_inode.read_all();
         let task = current_task().unwrap();

@@ -1,4 +1,4 @@
-use super::File;
+use super::{File, Stat};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -115,6 +115,17 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     }
 }
 
+pub fn linkat(old_name: &str, new_name: &str) -> isize {
+    if old_name == new_name {
+        return -1;
+    }
+    ROOT_INODE.linkat(old_name, new_name)
+}
+
+pub fn unlinkat(name: &str) -> isize {
+    ROOT_INODE.unlinkat(name)
+}
+
 impl File for OSInode {
     fn readable(&self) -> bool {
         self.readable
@@ -145,5 +156,9 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    fn stat(&self) -> Stat {
+        let inner = self.inner.inclusive_access();
+        inner.inode.stat()
     }
 }
