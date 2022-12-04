@@ -19,14 +19,14 @@ pub struct BlockCache {
 impl BlockCache {
     /// Load a new BlockCache from disk.
     pub fn new(block_id: usize, block_device: Arc<dyn BlockDevice>) -> Self {
-        let mut cache = [0u8; BLOCK_SZ];
-        block_device.read_block(block_id, &mut cache);
-        Self {
-            cache,
+        let mut c = Self {
+            cache: [0;BLOCK_SZ],
             block_id,
-            block_device,
+            block_device: Arc::clone(&block_device),
             modified: false,
-        }
+        };
+        block_device.read_block(block_id, &mut c.cache);
+        c
     }
     /// Get the address of an offset inside the cached block data
     fn addr_of_offset(&self, offset: usize) -> usize {

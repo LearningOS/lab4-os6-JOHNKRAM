@@ -288,7 +288,7 @@ impl Inode {
                         fs.dealloc_data(data_block);
                     }
                 });
-                //fs.dealloc_inode(inode_id);
+                fs.dealloc_inode(inode_id);
             }
             block_cache_sync_all();
             0
